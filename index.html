@@ -47,8 +47,9 @@
   .cal-day.split { padding:4px; }
   .tri-arrive { position:absolute; inset:0; clip-path:polygon(0 0, 100% 0, 100% 100%); background:#CBEDE0; }
   .tri-depart { position:absolute; inset:0; clip-path:polygon(0 0, 0 100%, 100% 100%); background:#EAF6F1; }
-  .lbl-arrive { position:absolute; top:20px; right:4px; font-size:8.5px; font-weight:600; color:#085041; text-align:right; z-index:2; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .lbl-depart { position:absolute; bottom:4px; left:4px; font-size:8.5px; font-weight:600; color:#0b6b52; z-index:2; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lbl-arrive { position:absolute; top:20px; right:4px; font-size:8.5px; font-weight:600; color:#085041; text-align:right; z-index:2; max-width:65%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lbl-depart { position:absolute; bottom:4px; left:4px; font-size:8.5px; font-weight:600; color:#0b6b52; z-index:2; max-width:65%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dot { display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:3px; }
   .cal-legend { font-size:12px; color:#666; margin-top:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
   .cal-legend .sw { width:12px; height:12px; border-radius:3px; background:#E1F5EE; border:1px solid #9FE1CB; display:inline-block; }
 </style>
@@ -546,6 +547,7 @@ async function verCalendario() {
       }))
       .filter(e => e.checkin && e.checkout);
 
+    const CANAL_COLOR = { 'Airbnb': '#D4537E', 'Booking': '#2a78d6', 'Directo': '#1baf7a', 'Otro': '#888780' };
     const daysInMonth = new Date(anio, mes, 0).getDate();
     const firstWeekday = (new Date(anio, mes-1, 1).getDay() + 6) % 7; // lunes=0
     const dayInfo = {};
@@ -564,16 +566,19 @@ async function verCalendario() {
     for (let d = 1; d <= daysInMonth; d++) {
       const info = dayInfo[d];
       if (info.staying) {
-        html += `<div class="cal-day occ"><div class="num">${d}</div><div class="guest">${info.staying.pasajero}</div><div class="guest" style="color:#5b8a7a;">${info.staying.canal}</div></div>`;
+        const c = CANAL_COLOR[info.staying.canal] || CANAL_COLOR['Otro'];
+        html += `<div class="cal-day occ" style="border-left:4px solid ${c};"><div class="num">${d}</div><div class="guest">${info.staying.pasajero}</div><div class="guest" style="color:#5b8a7a;">${info.staying.canal}</div></div>`;
       } else if (info.arriving || info.departing) {
         let arriveTri = '', departTri = '', arriveLbl = '', departLbl = '';
         if (info.arriving) {
+          const c = CANAL_COLOR[info.arriving.canal] || CANAL_COLOR['Otro'];
           arriveTri = '<div class="tri-arrive"></div>';
-          arriveLbl = `<div class="lbl-arrive">${info.arriving.pasajero}<br>llega</div>`;
+          arriveLbl = `<div class="lbl-arrive"><span class="dot" style="background:${c};"></span>${info.arriving.pasajero}<br>llega</div>`;
         }
         if (info.departing) {
+          const c = CANAL_COLOR[info.departing.canal] || CANAL_COLOR['Otro'];
           departTri = '<div class="tri-depart"></div>';
-          departLbl = `<div class="lbl-depart">${info.departing.pasajero}<br>sale</div>`;
+          departLbl = `<div class="lbl-depart"><span class="dot" style="background:${c};"></span>${info.departing.pasajero}<br>sale</div>`;
         }
         html += `<div class="cal-day split">${arriveTri}${departTri}<div class="num">${d}</div>${arriveLbl}${departLbl}</div>`;
       } else {
@@ -581,7 +586,9 @@ async function verCalendario() {
       }
     }
     html += '</div><div class="cal-legend">';
-    html += '<span class="sw"></span> Ocupado &nbsp; <span style="font-style:italic;">Día partido en diagonal: arriba llega, abajo sale</span>';
+    Object.keys(CANAL_COLOR).forEach(canal => {
+      html += `<span class="dot" style="background:${CANAL_COLOR[canal]};"></span>${canal} &nbsp;`;
+    });
     html += '</div>';
     cont.innerHTML = html;
   } catch (e) {
