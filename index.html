@@ -49,9 +49,9 @@
 </style>
 </head>
 <body>
-
+ 
 <h1>Deptos Lastarria</h1>
-
+ 
 <div id="config-screen" style="display:none; text-align:left;">
   <div class="card">
     <p style="font-size:14px; color:#666; margin-top:0;">Configuración inicial (solo una vez en este dispositivo/navegador)</p>
@@ -64,28 +64,28 @@
     <button class="primary" id="btn-save-config">Guardar y continuar</button>
   </div>
 </div>
-
+ 
 <div id="login-screen" style="display:none;">
   <p style="color:#666;">Conecta tu cuenta de Microsoft para leer y escribir directo en tu Excel.</p>
   <button class="primary" id="btn-login">Iniciar sesión con Microsoft</button>
   <p style="margin-top:2rem;"><button id="btn-edit-config">Editar configuración</button></p>
 </div>
-
+ 
 <div id="loading" class="spinner" style="display:none;">Cargando…</div>
-
+ 
 <div id="app">
   <div class="top-bar">
     <span id="user-label"></span>
     <button id="btn-logout" style="width:auto; height:auto; padding:4px 10px; margin:0;">Cerrar sesión</button>
   </div>
-
+ 
   <div class="tabs">
     <button class="tab active" data-tab="registro">Registrar</button>
     <button class="tab" data-tab="estadias">Estadías</button>
     <button class="tab" data-tab="resumen">Resumen</button>
     <button class="tab" data-tab="movs">Movimientos</button>
   </div>
-
+ 
   <div id="tab-registro" class="section active">
     <div class="card">
       <label for="f-fecha">Fecha</label>
@@ -114,7 +114,7 @@
       <div id="msg-guardado" class="msg"></div>
     </div>
   </div>
-
+ 
   <div id="tab-estadias" class="section">
     <div class="card">
       <p style="font-size:14px; font-weight:600; margin:0 0 8px;">Agregar estadía</p>
@@ -147,7 +147,7 @@
       <button class="primary" id="btn-guardar-estadia">Guardar estadía</button>
       <div id="msg-estadia" class="msg"></div>
     </div>
-
+ 
     <h2>Calendario de ocupación</h2>
     <div class="row2">
       <div>
@@ -163,7 +163,7 @@
     <p style="font-size:12px; color:#666; margin-top:8px;">Algunas estadías antiguas (marzo/abril 2026) no tienen fecha exacta registrada y no se ven aquí, aunque sí están en los ingresos.</p>
     <div id="calendario" style="margin-top:1rem;"></div>
   </div>
-
+ 
   <div id="tab-resumen" class="section">
     <div class="row2">
       <div>
@@ -187,7 +187,7 @@
       <canvas id="chartDepto" role="img" aria-label="Comparación de ingresos, costos y resultado por departamento"></canvas>
     </div>
   </div>
-
+ 
   <div id="tab-movs" class="section">
     <button id="btn-cargar-movs">Cargar últimos movimientos</button>
     <div class="card" style="overflow-x:auto; margin-top:1rem;">
@@ -198,7 +198,7 @@
     </div>
   </div>
 </div>
-
+ 
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3/lib/msal-browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
@@ -206,27 +206,27 @@ const CATS = {"Ingreso": ["Pagos", "Otros"], "Costo fijo": ["LUZ", "AGUA", "Wifi
 const CONFIG_KEY = 'ms_config_lastarria';
 let msalInstance, account, config;
 let chartDepto;
-
+ 
 function fmt(n) { return '$' + Math.round(n||0).toLocaleString('es-CL'); }
-
+ 
 function loadConfig() {
   const raw = localStorage.getItem(CONFIG_KEY);
   return raw ? JSON.parse(raw) : null;
 }
 function saveConfig(c) { localStorage.setItem(CONFIG_KEY, JSON.stringify(c)); }
-
+ 
 function show(id) {
   ['config-screen','login-screen','loading','app'].forEach(s => {
     document.getElementById(s).style.display = (s === id) ? 'block' : 'none';
   });
 }
-
+ 
 async function init() {
   config = loadConfig();
   if (!config) { show('config-screen'); return; }
   await startMsal();
 }
-
+ 
 document.getElementById('btn-save-config').addEventListener('click', async () => {
   const clientId = document.getElementById('c-client').value.trim();
   const tenantId = document.getElementById('c-tenant').value.trim();
@@ -236,14 +236,14 @@ document.getElementById('btn-save-config').addEventListener('click', async () =>
   saveConfig(config);
   await startMsal();
 });
-
+ 
 document.getElementById('btn-edit-config').addEventListener('click', () => {
   document.getElementById('c-client').value = config.clientId;
   document.getElementById('c-tenant').value = config.tenantId;
   document.getElementById('c-path').value = config.path;
   show('config-screen');
 });
-
+ 
 async function startMsal() {
   msalInstance = new msal.PublicClientApplication({
     auth: {
@@ -272,14 +272,14 @@ async function startMsal() {
     show('login-screen');
   }
 }
-
+ 
 document.getElementById('btn-login').addEventListener('click', () => {
   msalInstance.loginRedirect({ scopes: ['Files.ReadWrite', 'User.Read'] });
 });
 document.getElementById('btn-logout').addEventListener('click', () => {
   msalInstance.logoutRedirect();
 });
-
+ 
 async function getToken() {
   const req = { scopes: ['Files.ReadWrite'], account };
   try {
@@ -290,7 +290,7 @@ async function getToken() {
     return null;
   }
 }
-
+ 
 async function graphFetch(url, options) {
   const token = await getToken();
   options = options || {};
@@ -303,11 +303,11 @@ async function graphFetch(url, options) {
   const ct = res.headers.get('content-type') || '';
   return ct.includes('application/json') ? res.json() : null;
 }
-
+ 
 function fileBase() {
   return 'https://graph.microsoft.com/v1.0/me/drive/root:/' + encodeURI(config.path) + ':/workbook';
 }
-
+ 
 function populateCats() {
   const tipo = document.getElementById('f-tipo').value;
   const sel = document.getElementById('f-cat');
@@ -318,7 +318,7 @@ function populateCats() {
   document.getElementById('f-canal-wrap').style.display = (tipo === 'Ingreso') ? 'block' : 'none';
 }
 document.getElementById('f-tipo').addEventListener('change', populateCats);
-
+ 
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
@@ -327,7 +327,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
   });
 });
-
+ 
 document.getElementById('btn-guardar').addEventListener('click', async () => {
   const msg = document.getElementById('msg-guardado');
   const fecha = document.getElementById('f-fecha').value;
@@ -360,7 +360,7 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
     msg.className = 'msg err'; msg.textContent = 'Error al guardar: ' + e.message;
   }
 });
-
+ 
 async function cargarResumen() {
   const anio = document.getElementById('r-anio').value;
   const mes = document.getElementById('r-mes').value;
@@ -381,7 +381,7 @@ async function cargarResumen() {
     document.getElementById('m-cos').textContent = fmt(cos);
     document.getElementById('m-res').textContent = fmt(res);
     document.getElementById('m-mar').textContent = Math.round((mar||0)*100) + '%';
-
+ 
     const deptoData = await graphFetch(fileBase() + "/worksheets('Dashboard')/range(address='A14:D16')");
     const labels = deptoData.values.map(r => String(r[0]));
     const ingD = deptoData.values.map(r => r[1]);
@@ -402,7 +402,7 @@ async function cargarResumen() {
   }
 }
 document.getElementById('btn-refrescar').addEventListener('click', cargarResumen);
-
+ 
 document.getElementById('btn-cargar-movs').addEventListener('click', async () => {
   const tbody = document.getElementById('tbl-movs');
   tbody.innerHTML = '<tr><td colspan="6">Cargando…</td></tr>';
@@ -429,7 +429,7 @@ document.getElementById('btn-cargar-movs').addEventListener('click', async () =>
     tbody.innerHTML = '<tr><td colspan="6">Error: ' + e.message + '</td></tr>';
   }
 });
-
+ 
 async function borrarMovimiento(index) {
   if (!confirm('¿Seguro que quieres borrar este movimiento? No se puede deshacer.')) return;
   try {
@@ -444,7 +444,7 @@ async function borrarMovimiento(index) {
     alert('No se pudo borrar: ' + e.message);
   }
 }
-
+ 
 // ---------- Estadías / calendario ----------
 function excelSerialToDateStr(serial) {
   if (typeof serial !== 'number') return null;
@@ -456,7 +456,7 @@ function dateStrToExcelSerial(dateStr) {
   const d = new Date(dateStr + 'T00:00:00Z');
   return Math.round(d.getTime() / 86400000) + 25569;
 }
-
+ 
 document.getElementById('btn-guardar-estadia').addEventListener('click', async () => {
   const msg = document.getElementById('msg-estadia');
   const depto = document.getElementById('e-depto').value;
@@ -493,7 +493,7 @@ document.getElementById('btn-guardar-estadia').addEventListener('click', async (
     msg.className = 'msg err'; msg.textContent = 'Error al guardar: ' + e.message;
   }
 });
-
+ 
 async function verCalendario() {
   const depto = document.getElementById('cal-depto').value;
   const mesVal = document.getElementById('cal-mes').value;
@@ -512,7 +512,7 @@ async function verCalendario() {
         pasajero: r[11] || '',
       }))
       .filter(e => e.checkin && e.checkout);
-
+ 
     const daysInMonth = new Date(anio, mes, 0).getDate();
     const firstWeekday = (new Date(anio, mes-1, 1).getDay() + 6) % 7; // lunes=0
     const dayInfo = {};
@@ -537,9 +537,10 @@ async function verCalendario() {
 }
 document.getElementById('btn-ver-calendario').addEventListener('click', verCalendario);
 document.getElementById('cal-mes').value = new Date().toISOString().slice(0,7);
-
-
+ 
+ 
 init();
 </script>
 </body>
 </html>
+ 
