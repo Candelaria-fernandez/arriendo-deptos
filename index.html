@@ -175,6 +175,13 @@
         <input type="number" id="r-mes" value="0" min="0" max="12">
       </div>
     </div>
+    <label for="r-depto">Departamento</label>
+    <select id="r-depto">
+      <option value="Todos">Todos</option>
+      <option value="107">107</option>
+      <option value="305">305</option>
+      <option value="607">607</option>
+    </select>
     <button id="btn-refrescar">Actualizar resumen</button>
     <div class="grid" style="margin-top:1rem;">
       <div class="metric"><div class="label">Ingresos</div><div class="value" id="m-ing">$0</div></div>
@@ -304,6 +311,17 @@ async function graphFetch(url, options) {
   return ct.includes('application/json') ? res.json() : null;
 }
  
+async function graphFetchAllRows(url) {
+  let rows = [];
+  let next = url;
+  while (next) {
+    const data = await graphFetch(next);
+    rows = rows.concat(data.value || []);
+    next = data['@odata.nextLink'] || null;
+  }
+  return rows;
+}
+ 
 function fileBase() {
   return 'https://graph.microsoft.com/v1.0/me/drive/root:/' + encodeURI(config.path) + ':/workbook';
 }
@@ -364,33 +382,34 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
 async function cargarResumen() {
   const anio = document.getElementById('r-anio').value;
   const mes = document.getElementById('r-mes').value;
+  const depto = document.getElementById('r-depto').value;
   try {
-    await graphFetch(fileBase() + "/worksheets('Estado_Resultados')/range(address='B3')", {
-      method: 'PATCH', body: JSON.stringify({ values: [[parseInt(anio,10)]] })
+    const allRows = await graphFetchAllRows(fileBase() + "/tables('MovimientosRentaCorta')/rows?$top=200");
+    const movs = allRows.map(row => row.values[0]).filter(r => r[4]);
+    const filtered = movs.filter(r => {
+      const anioRow = r[2], mesRow = r[3];
+      if (parseInt(anioRow,10) !== parseInt(anio,10)) return false;
+      if (mes !== '0' && parseInt(mesRow,10) !== parseInt(mes,10)) return false;
+      if (depto !== 'Todos' && String(r[4]) !== depto) return false;
+      return true;
     });
-    await graphFetch(fileBase() + "/worksheets('Estado_Resultados')/range(address='B4')", {
-      method: 'PATCH', body: JSON.stringify({ values: [[parseInt(mes,10)]] })
-    });
-    await graphFetch(fileBase() + '/application/calculate', {
-      method: 'POST', body: JSON.stringify({ calculationType: 'Full' })
-    });
-    await new Promise(r => setTimeout(r, 1000));
-    const kpi = await graphFetch(fileBase() + "/worksheets('Dashboard')/range(address='B7:B10')");
-    const [ing, cos, res, mar] = kpi.values.map(r => r[0]);
+    const ing = filtered.reduce((s,r)=>s+(r[10]||0),0);
+    const cos = filtered.reduce((s,r)=>s+(r[11]||0),0);
+    const res = ing - cos;
+    const mar = ing > 0 ? res/ing : 0;
     document.getElementById('m-ing').textContent = fmt(ing);
     document.getElementById('m-cos').textContent = fmt(cos);
     document.getElementById('m-res').textContent = fmt(res);
-    document.getElementById('m-mar').textContent = Math.round((mar||0)*100) + '%';
+    document.getElementById('m-mar').textContent = Math.round(mar*100) + '%';
  
-    const deptoData = await graphFetch(fileBase() + "/worksheets('Dashboard')/range(address='A14:D16')");
-    const labels = deptoData.values.map(r => String(r[0]));
-    const ingD = deptoData.values.map(r => r[1]);
-    const cosD = deptoData.values.map(r => r[2]);
-    const resD = deptoData.values.map(r => r[3]);
+    const deptos = ['107','305','607'];
+    const ingD = deptos.map(d => filtered.filter(r=>String(r[4])===d).reduce((s,r)=>s+(r[10]||0),0));
+    const cosD = deptos.map(d => filtered.filter(r=>String(r[4])===d).reduce((s,r)=>s+(r[11]||0),0));
+    const resD = deptos.map((d,i)=>ingD[i]-cosD[i]);
     if (chartDepto) chartDepto.destroy();
     chartDepto = new Chart(document.getElementById('chartDepto'), {
       type: 'bar',
-      data: { labels, datasets: [
+      data: { labels: deptos, datasets: [
         {label:'Ingresos', data: ingD, backgroundColor:'#2a78d6', borderRadius:4},
         {label:'Costos', data: cosD, backgroundColor:'#eb6834', borderRadius:4},
         {label:'Resultado', data: resD, backgroundColor:'#1baf7a', borderRadius:4},
@@ -408,18 +427,19 @@ document.getElementById('btn-cargar-movs').addEventListener('click', async () =>
   tbody.innerHTML = '<tr><td colspan="6">Cargando…</td></tr>';
   await new Promise(r => setTimeout(r, 1200));
   try {
-    const data = await graphFetch(fileBase() + "/tables('MovimientosRentaCorta')/rows?$top=2000");
-    const rows = data.value
+    const allRows = await graphFetchAllRows(fileBase() + "/tables('MovimientosRentaCorta')/rows?$top=200");
+    const rows = allRows
       .map(row => ({ index: row.index, values: row.values[0] }))
-      .filter(row => row.values[1]);
-    rows.sort((a,b) => String(b.values[1]).localeCompare(String(a.values[1])));
+      .filter(row => row.values[1])
+      .map(row => ({ ...row, fecha: excelSerialToDateStr(row.values[1]) }));
+    rows.sort((a,b) => String(b.fecha).localeCompare(String(a.fecha)));
     tbody.innerHTML = '';
     rows.slice(0,80).forEach(row => {
       const r = row.values;
       const tipo = r[5], monto = tipo === 'Ingreso' ? r[10] : r[11];
       const pillClass = tipo === 'Ingreso' ? 'ing' : 'cos';
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${String(r[1]).slice(0,10)}</td><td>${r[4]}</td><td><span class="pill ${pillClass}">${tipo}</span></td><td>${r[6]}</td><td>${fmt(monto)}</td><td><button class="btn-del-mov" data-index="${row.index}" style="width:auto;height:32px;padding:0 10px;margin:0;color:#993c1d;">Borrar</button></td>`;
+      tr.innerHTML = `<td>${row.fecha}</td><td>${r[4]}</td><td><span class="pill ${pillClass}">${tipo}</span></td><td>${r[6]}</td><td>${fmt(monto)}</td><td><button class="btn-del-mov" data-index="${row.index}" style="width:auto;height:32px;padding:0 10px;margin:0;color:#993c1d;">Borrar</button></td>`;
       tbody.appendChild(tr);
     });
     tbody.querySelectorAll('.btn-del-mov').forEach(btn => {
@@ -446,11 +466,16 @@ async function borrarMovimiento(index) {
 }
  
 // ---------- Estadías / calendario ----------
-function excelSerialToDateStr(serial) {
-  if (typeof serial !== 'number') return null;
-  const utcDays = Math.floor(serial - 25569);
-  const d = new Date(utcDays * 86400 * 1000);
-  return d.toISOString().slice(0,10);
+function excelSerialToDateStr(value) {
+  if (typeof value === 'number') {
+    const utcDays = Math.floor(value - 25569);
+    const d = new Date(utcDays * 86400 * 1000);
+    return d.toISOString().slice(0,10);
+  }
+  if (typeof value === 'string' && value.length >= 10) {
+    return value.slice(0,10);
+  }
+  return null;
 }
 function dateStrToExcelSerial(dateStr) {
   const d = new Date(dateStr + 'T00:00:00Z');
@@ -502,34 +527,45 @@ async function verCalendario() {
   cont.innerHTML = '<p style="color:#666; font-size:13px;">Cargando…</p>';
   const [anio, mes] = mesVal.split('-').map(x => parseInt(x,10));
   try {
-    const data = await graphFetch(fileBase() + "/tables('ReservasRentaCorta')/rows?$top=2000");
-    const rows = data.value.map(r => r.values[0]);
+    const allRows = await graphFetchAllRows(fileBase() + "/tables('ReservasRentaCorta')/rows?$top=200");
+    const rows = allRows.map(r => r.values[0]);
     const estadias = rows
       .filter(r => r[1] === depto && r[10] !== 'Cancelada')
       .map(r => ({
         checkin: excelSerialToDateStr(r[3]),
         checkout: excelSerialToDateStr(r[4]),
         pasajero: r[11] || '',
+        canal: r[2] || 'Otro',
       }))
       .filter(e => e.checkin && e.checkout);
  
+    const CANAL_COLOR = { 'Airbnb': '#D4537E', 'Booking': '#2a78d6', 'Directo': '#1baf7a', 'Otro': '#888780' };
     const daysInMonth = new Date(anio, mes, 0).getDate();
     const firstWeekday = (new Date(anio, mes-1, 1).getDay() + 6) % 7; // lunes=0
     const dayInfo = {};
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = anio + '-' + String(mes).padStart(2,'0') + '-' + String(d).padStart(2,'0');
       const match = estadias.find(e => dateStr >= e.checkin && dateStr < e.checkout);
-      dayInfo[d] = match ? match.pasajero : null;
+      dayInfo[d] = match || null;
     }
     const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
     let html = `<p style="font-weight:600;">${monthNames[mes-1]} ${anio} — Depto ${depto}</p><div class="cal-grid">`;
     ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].forEach(d => { html += `<div class="cal-head">${d}</div>`; });
     for (let i = 0; i < firstWeekday; i++) html += '<div class="cal-day empty"></div>';
     for (let d = 1; d <= daysInMonth; d++) {
-      const guest = dayInfo[d];
-      html += `<div class="cal-day ${guest ? 'occ' : ''}"><div class="num">${d}</div>${guest ? '<div class="guest">'+guest+'</div>' : ''}</div>`;
+      const info = dayInfo[d];
+      if (info) {
+        const color = CANAL_COLOR[info.canal] || CANAL_COLOR['Otro'];
+        html += `<div class="cal-day occ" style="border-left:3px solid ${color};"><div class="num">${d}</div><div class="guest">${info.pasajero}</div><div class="guest" style="color:${color};font-weight:600;">${info.canal}</div></div>`;
+      } else {
+        html += `<div class="cal-day"><div class="num">${d}</div></div>`;
+      }
     }
-    html += '</div><div class="cal-legend"><span class="sw"></span> Ocupado</div>';
+    html += '</div><div class="cal-legend" style="flex-wrap:wrap;">';
+    Object.keys(CANAL_COLOR).forEach(canal => {
+      html += `<span class="sw" style="background:${CANAL_COLOR[canal]}; border-color:${CANAL_COLOR[canal]};"></span> ${canal} &nbsp;`;
+    });
+    html += '</div>';
     cont.innerHTML = html;
   } catch (e) {
     cont.innerHTML = '<p class="msg err">Error al cargar el calendario: ' + e.message + '</p>';
@@ -543,4 +579,5 @@ init();
 </script>
 </body>
 </html>
+ 
  
