@@ -532,7 +532,7 @@ async function verCalendario() {
     const allRows = await graphFetchAllRows(fileBase() + "/tables('ReservasRentaCorta')/rows?$top=200");
     const rows = allRows.map(r => r.values[0]);
     const estadias = rows
-      .filter(r => r[1] === depto && r[10] !== 'Cancelada')
+      .filter(r => String(r[1]) === depto && r[10] !== 'Cancelada')
       .map(r => ({
         checkin: excelSerialToDateStr(r[3]),
         checkout: excelSerialToDateStr(r[4]),
