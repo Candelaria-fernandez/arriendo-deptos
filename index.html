@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deptos Lastarria</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin:0; padding: 1rem; max-width: 640px; margin: 0 auto 3rem; color:#0b0b0b; background:#fcfcfb; }
+  * { box-sizing: border-box; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0.5rem 0 1rem; }
+  h2 { font-size: 16px; font-weight: 600; margin: 1.5rem 0 0.75rem; }
+  .card { background: #fff; border: 1px solid #e1e0d9; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 12px; }
+  .metric { background: #f7f7f5; border-radius: 8px; padding: 0.9rem 1rem; }
+  .metric .label { font-size: 12px; color: #666; margin-bottom: 4px; }
+  .metric .value { font-size: 22px; font-weight: 600; }
+  label { display:block; font-size: 13px; color: #666; margin: 0.5rem 0 0.25rem; }
+  input, select, button { width:100%; height: 40px; border-radius: 8px; border: 1px solid #c3c2b7; padding: 0 10px; font-size: 14px; background: #fff; color: inherit; }
+  button { cursor:pointer; font-weight:600; height:44px; margin-top: 1rem; border: 1px solid #c3c2b7; background: #f7f7f5; }
+  button.primary { background:#0f6e56; color:#fff; border:none; }
+  .row2 { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  table { width:100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align:left; padding: 6px 8px; border-bottom: 1px solid #e1e0d9; }
+  th { color: #666; font-weight:600; font-size:12px; }
+  .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight:600; }
+  .ing { background:#E1F5EE; color:#085041; }
+  .cos { background:#FAECE7; color:#712B13; }
+  .tabs { display:flex; gap:8px; margin-bottom: 1rem; flex-wrap:wrap; }
+  .tab { flex:1; min-width:100px; text-align:center; margin:0; height:40px; }
+  .tab.active { background:#0f6e56; color:#fff; border:none; }
+  .section { display:none; }
+  .section.active { display:block; }
+  .msg { font-size: 13px; margin-top: 8px; }
+  .msg.ok { color:#0f6e56; }
+  .msg.err { color:#993c1d; }
+  .top-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem; font-size:13px; color:#666; }
+  #app { display:none; }
+  #login-screen, #config-screen { text-align:center; padding: 2rem 0; }
+  .spinner { text-align:center; padding: 2rem; color:#666; }
+  .cal-grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:4px; }
+  .cal-head { font-size:11px; color:#666; text-align:center; padding:2px 0; }
+  .cal-day { min-height:56px; border-radius:6px; padding:4px; font-size:11px; background:#f7f7f5; border:1px solid #e1e0d9; }
+  .cal-day.empty { background:none; border:none; }
+  .cal-day .num { font-weight:600; font-size:12px; }
+  .cal-day.occ { background:#E1F5EE; border-color:#9FE1CB; }
+  .cal-day .guest { font-size:10px; color:#085041; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cal-legend { font-size:12px; color:#666; margin-top:8px; display:flex; align-items:center; gap:6px; }
+  .cal-legend .sw { width:12px; height:12px; border-radius:3px; background:#E1F5EE; border:1px solid #9FE1CB; display:inline-block; }
+</style>
+</head>
+<body>
+
+<h1>Deptos Lastarria</h1>
+
+<div id="config-screen" style="display:none; text-align:left;">
+  <div class="card">
+    <p style="font-size:14px; color:#666; margin-top:0;">Configuración inicial (solo una vez en este dispositivo/navegador)</p>
+    <label for="c-client">Application (client) ID</label>
+    <input type="text" id="c-client" placeholder="00000000-0000-0000-0000-000000000000">
+    <label for="c-tenant">Directory (tenant) ID</label>
+    <input type="text" id="c-tenant" placeholder="00000000-0000-0000-0000-000000000000">
+    <label for="c-path">Ruta del archivo en OneDrive</label>
+    <input type="text" id="c-path" placeholder="ERP_Consolidado_Lastarria.xlsx">
+    <button class="primary" id="btn-save-config">Guardar y continuar</button>
+  </div>
+</div>
+
+<div id="login-screen" style="display:none;">
+  <p style="color:#666;">Conecta tu cuenta de Microsoft para leer y escribir directo en tu Excel.</p>
+  <button class="primary" id="btn-login">Iniciar sesión con Microsoft</button>
+  <p style="margin-top:2rem;"><button id="btn-edit-config">Editar configuración</button></p>
+</div>
+
+<div id="loading" class="spinner" style="display:none;">Cargando…</div>
+
+<div id="app">
+  <div class="top-bar">
+    <span id="user-label"></span>
+    <button id="btn-logout" style="width:auto; height:auto; padding:4px 10px; margin:0;">Cerrar sesión</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="registro">Registrar</button>
+    <button class="tab" data-tab="estadias">Estadías</button>
+    <button class="tab" data-tab="resumen">Resumen</button>
+    <button class="tab" data-tab="movs">Movimientos</button>
+  </div>
+
+  <div id="tab-registro" class="section active">
+    <div class="card">
+      <label for="f-fecha">Fecha</label>
+      <input type="date" id="f-fecha">
+      <div class="row2">
+        <div>
+          <label for="f-depto">Departamento</label>
+          <select id="f-depto"><option value="107">107</option><option value="305">305</option><option value="607">607</option></select>
+        </div>
+        <div>
+          <label for="f-tipo">Tipo</label>
+          <select id="f-tipo"><option value="Ingreso">Ingreso</option><option value="Costo fijo">Costo fijo</option><option value="Costo variable">Costo variable</option></select>
+        </div>
+      </div>
+      <label for="f-cat">Categoría</label>
+      <select id="f-cat"></select>
+      <div id="f-canal-wrap">
+        <label for="f-canal">Canal</label>
+        <select id="f-canal"><option value="">-</option><option value="Airbnb">Airbnb</option><option value="Booking">Booking</option><option value="Directo">Directo</option><option value="Otro">Otro</option></select>
+      </div>
+      <label for="f-monto">Monto ($)</label>
+      <input type="number" id="f-monto" placeholder="0" min="0" step="1">
+      <label for="f-desc">Descripción (opcional)</label>
+      <input type="text" id="f-desc" placeholder="Ej: cuenta de luz marzo">
+      <button class="primary" id="btn-guardar">Guardar en Excel</button>
+      <div id="msg-guardado" class="msg"></div>
+    </div>
+  </div>
+
+  <div id="tab-estadias" class="section">
+    <div class="card">
+      <p style="font-size:14px; font-weight:600; margin:0 0 8px;">Agregar estadía</p>
+      <label for="e-depto">Departamento</label>
+      <select id="e-depto"><option value="107">107</option><option value="305">305</option><option value="607">607</option></select>
+      <label for="e-pasajero">Nombre del huésped</label>
+      <input type="text" id="e-pasajero" placeholder="Ej: Juan Pérez">
+      <div class="row2">
+        <div>
+          <label for="e-checkin">Check-in</label>
+          <input type="date" id="e-checkin">
+        </div>
+        <div>
+          <label for="e-checkout">Check-out</label>
+          <input type="date" id="e-checkout">
+        </div>
+      </div>
+      <div class="row2">
+        <div>
+          <label for="e-canal">Canal</label>
+          <select id="e-canal"><option value="">-</option><option value="Airbnb">Airbnb</option><option value="Booking">Booking</option><option value="Directo">Directo</option><option value="Otro">Otro</option></select>
+        </div>
+        <div>
+          <label for="e-estado">Estado</label>
+          <select id="e-estado"><option value="Confirmada">Confirmada</option><option value="Futura">Futura</option><option value="Cancelada">Cancelada</option></select>
+        </div>
+      </div>
+      <label for="e-ingreso">Ingreso bruto ($) (déjalo vacío si aún no se sabe)</label>
+      <input type="number" id="e-ingreso" placeholder="0" min="0" step="1">
+      <button class="primary" id="btn-guardar-estadia">Guardar estadía</button>
+      <div id="msg-estadia" class="msg"></div>
+    </div>
+
+    <h2>Calendario de ocupación</h2>
+    <div class="row2">
+      <div>
+        <label for="cal-depto">Departamento</label>
+        <select id="cal-depto"><option value="107">107</option><option value="305">305</option><option value="607">607</option></select>
+      </div>
+      <div>
+        <label for="cal-mes">Mes</label>
+        <input type="month" id="cal-mes">
+      </div>
+    </div>
+    <button id="btn-ver-calendario">Ver calendario</button>
+    <p style="font-size:12px; color:#666; margin-top:8px;">Algunas estadías antiguas (marzo/abril 2026) no tienen fecha exacta registrada y no se ven aquí, aunque sí están en los ingresos.</p>
+    <div id="calendario" style="margin-top:1rem;"></div>
+  </div>
+
+  <div id="tab-resumen" class="section">
+    <div class="row2">
+      <div>
+        <label for="r-anio">Año</label>
+        <input type="number" id="r-anio" value="2026">
+      </div>
+      <div>
+        <label for="r-mes">Mes (0 = todos)</label>
+        <input type="number" id="r-mes" value="0" min="0" max="12">
+      </div>
+    </div>
+    <button id="btn-refrescar">Actualizar resumen</button>
+    <div class="grid" style="margin-top:1rem;">
+      <div class="metric"><div class="label">Ingresos</div><div class="value" id="m-ing">$0</div></div>
+      <div class="metric"><div class="label">Costos</div><div class="value" id="m-cos">$0</div></div>
+      <div class="metric"><div class="label">Resultado</div><div class="value" id="m-res">$0</div></div>
+      <div class="metric"><div class="label">Margen</div><div class="value" id="m-mar">0%</div></div>
+    </div>
+    <h2>Resultado por departamento</h2>
+    <div style="position:relative; height:220px;">
+      <canvas id="chartDepto" role="img" aria-label="Comparación de ingresos, costos y resultado por departamento"></canvas>
+    </div>
+  </div>
+
+  <div id="tab-movs" class="section">
+    <button id="btn-cargar-movs">Cargar últimos movimientos</button>
+    <div class="card" style="overflow-x:auto; margin-top:1rem;">
+      <table>
+        <thead><tr><th>Fecha</th><th>Depto</th><th>Tipo</th><th>Categoría</th><th>Monto</th></tr></thead>
+        <tbody id="tbl-movs"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3/lib/msal-browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const CATS = {"Ingreso": ["Pagos", "Otros"], "Costo fijo": ["LUZ", "AGUA", "Wifi", "Contribuciones", "Dividendo", "Gastos Comunes", "Impuestos", "Otros"], "Costo variable": ["Comisión", "ASEO", "Insumos", "Arreglos", "Mantenciones", "Otros"]};
+const CONFIG_KEY = 'ms_config_lastarria';
+let msalInstance, account, config;
+let chartDepto;
+
+function fmt(n) { return '$' + Math.round(n||0).toLocaleString('es-CL'); }
+
+function loadConfig() {
+  const raw = localStorage.getItem(CONFIG_KEY);
+  return raw ? JSON.parse(raw) : null;
+}
+function saveConfig(c) { localStorage.setItem(CONFIG_KEY, JSON.stringify(c)); }
+
+function show(id) {
+  ['config-screen','login-screen','loading','app'].forEach(s => {
+    document.getElementById(s).style.display = (s === id) ? 'block' : 'none';
+  });
+}
+
+async function init() {
+  config = loadConfig();
+  if (!config) { show('config-screen'); return; }
+  await startMsal();
+}
+
+document.getElementById('btn-save-config').addEventListener('click', async () => {
+  const clientId = document.getElementById('c-client').value.trim();
+  const tenantId = document.getElementById('c-tenant').value.trim();
+  const path = document.getElementById('c-path').value.trim();
+  if (!clientId || !tenantId || !path) { alert('Completa los 3 campos.'); return; }
+  config = { clientId, tenantId, path };
+  saveConfig(config);
+  await startMsal();
+});
+
+document.getElementById('btn-edit-config').addEventListener('click', () => {
+  document.getElementById('c-client').value = config.clientId;
+  document.getElementById('c-tenant').value = config.tenantId;
+  document.getElementById('c-path').value = config.path;
+  show('config-screen');
+});
+
+async function startMsal() {
+  msalInstance = new msal.PublicClientApplication({
+    auth: {
+      clientId: config.clientId,
+      authority: 'https://login.microsoftonline.com/' + config.tenantId,
+      redirectUri: window.location.href.split('#')[0].split('?')[0],
+    },
+    cache: { cacheLocation: 'localStorage' }
+  });
+  await msalInstance.initialize();
+  const resp = await msalInstance.handleRedirectPromise();
+  const accounts = msalInstance.getAllAccounts();
+  if (resp && resp.account) {
+    account = resp.account;
+  } else if (accounts.length > 0) {
+    account = accounts[0];
+  }
+  if (account) {
+    show('loading');
+    document.getElementById('user-label').textContent = account.username;
+    show('app');
+    populateCats();
+    document.getElementById('f-fecha').value = new Date().toISOString().slice(0,10);
+    await cargarResumen();
+  } else {
+    show('login-screen');
+  }
+}
+
+document.getElementById('btn-login').addEventListener('click', () => {
+  msalInstance.loginRedirect({ scopes: ['Files.ReadWrite', 'User.Read'] });
+});
+document.getElementById('btn-logout').addEventListener('click', () => {
+  msalInstance.logoutRedirect();
+});
+
+async function getToken() {
+  const req = { scopes: ['Files.ReadWrite'], account };
+  try {
+    const r = await msalInstance.acquireTokenSilent(req);
+    return r.accessToken;
+  } catch (e) {
+    const r = await msalInstance.acquireTokenRedirect(req);
+    return null;
+  }
+}
+
+async function graphFetch(url, options) {
+  const token = await getToken();
+  options = options || {};
+  options.headers = Object.assign({ 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, options.headers || {});
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(res.status + ': ' + t);
+  }
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('application/json') ? res.json() : null;
+}
+
+function fileBase() {
+  return 'https://graph.microsoft.com/v1.0/me/drive/root:/' + encodeURI(config.path) + ':/workbook';
+}
+
+function populateCats() {
+  const tipo = document.getElementById('f-tipo').value;
+  const sel = document.getElementById('f-cat');
+  sel.innerHTML = '';
+  CATS[tipo].forEach(c => {
+    const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o);
+  });
+  document.getElementById('f-canal-wrap').style.display = (tipo === 'Ingreso') ? 'block' : 'none';
+}
+document.getElementById('f-tipo').addEventListener('change', populateCats);
+
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+document.getElementById('btn-guardar').addEventListener('click', async () => {
+  const msg = document.getElementById('msg-guardado');
+  const fecha = document.getElementById('f-fecha').value;
+  const depto = document.getElementById('f-depto').value;
+  const tipo = document.getElementById('f-tipo').value;
+  const categoria = document.getElementById('f-cat').value;
+  const canal = document.getElementById('f-canal').value || null;
+  const monto = parseFloat(document.getElementById('f-monto').value);
+  const desc = document.getElementById('f-desc').value || null;
+  if (!fecha || !monto || monto <= 0) {
+    msg.className = 'msg err'; msg.textContent = 'Completa la fecha y un monto mayor a 0.'; return;
+  }
+  const anio = parseInt(fecha.slice(0,4),10);
+  const mesNum = parseInt(fecha.slice(5,7),10);
+  const ingreso = tipo === 'Ingreso' ? monto : 0;
+  const costo = tipo !== 'Ingreso' ? monto : 0;
+  const values = [[null, fecha, anio, mesNum, depto, tipo, categoria, canal, desc, null, ingreso, costo, null, 'Pagado', null]];
+  msg.className = 'msg'; msg.textContent = 'Guardando...';
+  try {
+    await graphFetch(fileBase() + "/tables('MovimientosRentaCorta')/rows/add", {
+      method: 'POST', body: JSON.stringify({ values })
+    });
+    await graphFetch(fileBase() + '/application/calculate', {
+      method: 'POST', body: JSON.stringify({ calculationType: 'Full' })
+    });
+    msg.className = 'msg ok'; msg.textContent = 'Movimiento guardado en el Excel.';
+    document.getElementById('f-monto').value = '';
+    document.getElementById('f-desc').value = '';
+  } catch (e) {
+    msg.className = 'msg err'; msg.textContent = 'Error al guardar: ' + e.message;
+  }
+});
+
+async function cargarResumen() {
+  const anio = document.getElementById('r-anio').value;
+  const mes = document.getElementById('r-mes').value;
+  try {
+    await graphFetch(fileBase() + "/worksheets('Estado_Resultados')/range(address='B3')", {
+      method: 'PATCH', body: JSON.stringify({ values: [[parseInt(anio,10)]] })
+    });
+    await graphFetch(fileBase() + "/worksheets('Estado_Resultados')/range(address='B4')", {
+      method: 'PATCH', body: JSON.stringify({ values: [[parseInt(mes,10)]] })
+    });
+    await graphFetch(fileBase() + '/application/calculate', {
+      method: 'POST', body: JSON.stringify({ calculationType: 'Full' })
+    });
+    const kpi = await graphFetch(fileBase() + "/worksheets('Dashboard')/range(address='B7:B10')");
+    const [ing, cos, res, mar] = kpi.values.map(r => r[0]);
+    document.getElementById('m-ing').textContent = fmt(ing);
+    document.getElementById('m-cos').textContent = fmt(cos);
+    document.getElementById('m-res').textContent = fmt(res);
+    document.getElementById('m-mar').textContent = Math.round((mar||0)*100) + '%';
+
+    const deptoData = await graphFetch(fileBase() + "/worksheets('Dashboard')/range(address='A14:D16')");
+    const labels = deptoData.values.map(r => String(r[0]));
+    const ingD = deptoData.values.map(r => r[1]);
+    const cosD = deptoData.values.map(r => r[2]);
+    const resD = deptoData.values.map(r => r[3]);
+    if (chartDepto) chartDepto.destroy();
+    chartDepto = new Chart(document.getElementById('chartDepto'), {
+      type: 'bar',
+      data: { labels, datasets: [
+        {label:'Ingresos', data: ingD, backgroundColor:'#2a78d6', borderRadius:4},
+        {label:'Costos', data: cosD, backgroundColor:'#eb6834', borderRadius:4},
+        {label:'Resultado', data: resD, backgroundColor:'#1baf7a', borderRadius:4},
+      ]},
+      options: { responsive:true, maintainAspectRatio:false, scales:{y:{beginAtZero:true}} }
+    });
+  } catch (e) {
+    alert('Error al leer el resumen: ' + e.message);
+  }
+}
+document.getElementById('btn-refrescar').addEventListener('click', cargarResumen);
+
+document.getElementById('btn-cargar-movs').addEventListener('click', async () => {
+  const tbody = document.getElementById('tbl-movs');
+  tbody.innerHTML = '<tr><td colspan="5">Cargando…</td></tr>';
+  try {
+    const data = await graphFetch(fileBase() + "/tables('MovimientosRentaCorta')/rows?$top=2000");
+    const rows = data.value.map(r => r.values[0]).filter(r => r[1]);
+    rows.sort((a,b) => String(b[1]).localeCompare(String(a[1])));
+    tbody.innerHTML = '';
+    rows.slice(0,80).forEach(r => {
+      const tipo = r[5], monto = tipo === 'Ingreso' ? r[10] : r[11];
+      const pillClass = tipo === 'Ingreso' ? 'ing' : 'cos';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${String(r[1]).slice(0,10)}</td><td>${r[4]}</td><td><span class="pill ${pillClass}">${tipo}</span></td><td>${r[6]}</td><td>${fmt(monto)}</td>`;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="5">Error: ' + e.message + '</td></tr>';
+  }
+});
+
+// ---------- Estadías / calendario ----------
+function excelSerialToDateStr(serial) {
+  if (typeof serial !== 'number') return null;
+  const utcDays = Math.floor(serial - 25569);
+  const d = new Date(utcDays * 86400 * 1000);
+  return d.toISOString().slice(0,10);
+}
+function dateStrToExcelSerial(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  return Math.round(d.getTime() / 86400000) + 25569;
+}
+
+document.getElementById('btn-guardar-estadia').addEventListener('click', async () => {
+  const msg = document.getElementById('msg-estadia');
+  const depto = document.getElementById('e-depto').value;
+  const pasajero = document.getElementById('e-pasajero').value.trim();
+  const checkin = document.getElementById('e-checkin').value;
+  const checkout = document.getElementById('e-checkout').value;
+  const canal = document.getElementById('e-canal').value || null;
+  const estado = document.getElementById('e-estado').value;
+  const ingresoRaw = document.getElementById('e-ingreso').value;
+  const ingreso = ingresoRaw === '' ? null : parseFloat(ingresoRaw);
+  if (!pasajero || !checkin || !checkout) {
+    msg.className = 'msg err'; msg.textContent = 'Completa huésped, check-in y check-out.'; return;
+  }
+  if (checkout <= checkin) {
+    msg.className = 'msg err'; msg.textContent = 'El check-out debe ser posterior al check-in.'; return;
+  }
+  const noches = Math.round((new Date(checkout) - new Date(checkin)) / 86400000);
+  const values = [[
+    null, depto, canal,
+    dateStrToExcelSerial(checkin), dateStrToExcelSerial(checkout),
+    noches, null,
+    ingreso, null, ingreso,
+    estado, pasajero
+  ]];
+  msg.className = 'msg'; msg.textContent = 'Guardando...';
+  try {
+    await graphFetch(fileBase() + "/tables('ReservasRentaCorta')/rows/add", {
+      method: 'POST', body: JSON.stringify({ values })
+    });
+    msg.className = 'msg ok'; msg.textContent = 'Estadía guardada.';
+    document.getElementById('e-pasajero').value = '';
+    document.getElementById('e-ingreso').value = '';
+  } catch (e) {
+    msg.className = 'msg err'; msg.textContent = 'Error al guardar: ' + e.message;
+  }
+});
+
+async function verCalendario() {
+  const depto = document.getElementById('cal-depto').value;
+  const mesVal = document.getElementById('cal-mes').value;
+  const cont = document.getElementById('calendario');
+  if (!mesVal) { alert('Elige un mes.'); return; }
+  cont.innerHTML = '<p style="color:#666; font-size:13px;">Cargando…</p>';
+  const [anio, mes] = mesVal.split('-').map(x => parseInt(x,10));
+  try {
+    const data = await graphFetch(fileBase() + "/tables('ReservasRentaCorta')/rows?$top=2000");
+    const rows = data.value.map(r => r.values[0]);
+    const estadias = rows
+      .filter(r => r[1] === depto && r[10] !== 'Cancelada')
+      .map(r => ({
+        checkin: excelSerialToDateStr(r[3]),
+        checkout: excelSerialToDateStr(r[4]),
+        pasajero: r[11] || '',
+      }))
+      .filter(e => e.checkin && e.checkout);
+
+    const daysInMonth = new Date(anio, mes, 0).getDate();
+    const firstWeekday = (new Date(anio, mes-1, 1).getDay() + 6) % 7; // lunes=0
+    const dayInfo = {};
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = anio + '-' + String(mes).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+      const match = estadias.find(e => dateStr >= e.checkin && dateStr < e.checkout);
+      dayInfo[d] = match ? match.pasajero : null;
+    }
+    const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    let html = `<p style="font-weight:600;">${monthNames[mes-1]} ${anio} — Depto ${depto}</p><div class="cal-grid">`;
+    ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].forEach(d => { html += `<div class="cal-head">${d}</div>`; });
+    for (let i = 0; i < firstWeekday; i++) html += '<div class="cal-day empty"></div>';
+    for (let d = 1; d <= daysInMonth; d++) {
+      const guest = dayInfo[d];
+      html += `<div class="cal-day ${guest ? 'occ' : ''}"><div class="num">${d}</div>${guest ? '<div class="guest">'+guest+'</div>' : ''}</div>`;
+    }
+    html += '</div><div class="cal-legend"><span class="sw"></span> Ocupado</div>';
+    cont.innerHTML = html;
+  } catch (e) {
+    cont.innerHTML = '<p class="msg err">Error al cargar el calendario: ' + e.message + '</p>';
+  }
+}
+document.getElementById('btn-ver-calendario').addEventListener('click', verCalendario);
+document.getElementById('cal-mes').value = new Date().toISOString().slice(0,7);
+
+
+init();
+</script>
+</body>
+</html>
