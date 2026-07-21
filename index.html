@@ -39,15 +39,17 @@
   .spinner { text-align:center; padding: 2rem; color:#666; }
   .cal-grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:4px; }
   .cal-head { font-size:11px; color:#666; text-align:center; padding:2px 0; }
-  .cal-day { min-height:64px; border-radius:6px; padding:4px; font-size:11px; background:#f7f7f5; border:1px solid #e1e0d9; }
+  .cal-day { min-height:64px; border-radius:6px; padding:4px; font-size:11px; background:#f7f7f5; border:1px solid #e1e0d9; position:relative; overflow:hidden; }
   .cal-day.empty { background:none; border:none; }
-  .cal-day .num { font-weight:600; font-size:12px; }
+  .cal-day .num { font-weight:600; font-size:12px; position:relative; z-index:2; }
   .cal-day.occ { background:#E1F5EE; border-color:#9FE1CB; }
-  .cal-day .guest { font-size:10px; color:#085041; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .cal-day.split { display:flex; flex-direction:column; gap:2px; padding:3px; }
-  .cal-half { flex:1; border-radius:3px; padding:1px 3px; min-height:16px; }
-  .cal-half .guest { font-size:9px; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
-  .cal-legend { font-size:12px; color:#666; margin-top:8px; display:flex; align-items:center; gap:6px; }
+  .cal-day .guest { font-size:10px; color:#085041; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; position:relative; z-index:2; }
+  .cal-day.split { padding:4px; }
+  .tri-arrive { position:absolute; inset:0; clip-path:polygon(0 0, 100% 0, 100% 100%); background:#CBEDE0; }
+  .tri-depart { position:absolute; inset:0; clip-path:polygon(0 0, 0 100%, 100% 100%); background:#EAF6F1; }
+  .lbl-arrive { position:absolute; top:20px; right:4px; font-size:8.5px; font-weight:600; color:#085041; text-align:right; z-index:2; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lbl-depart { position:absolute; bottom:4px; left:4px; font-size:8.5px; font-weight:600; color:#0b6b52; z-index:2; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cal-legend { font-size:12px; color:#666; margin-top:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
   .cal-legend .sw { width:12px; height:12px; border-radius:3px; background:#E1F5EE; border:1px solid #9FE1CB; display:inline-block; }
 </style>
 </head>
@@ -544,7 +546,6 @@ async function verCalendario() {
       }))
       .filter(e => e.checkin && e.checkout);
 
-    const CANAL_COLOR = { 'Airbnb': '#D4537E', 'Booking': '#2a78d6', 'Directo': '#1baf7a', 'Otro': '#888780' };
     const daysInMonth = new Date(anio, mes, 0).getDate();
     const firstWeekday = (new Date(anio, mes-1, 1).getDay() + 6) % 7; // lunes=0
     const dayInfo = {};
@@ -563,27 +564,24 @@ async function verCalendario() {
     for (let d = 1; d <= daysInMonth; d++) {
       const info = dayInfo[d];
       if (info.staying) {
-        const color = CANAL_COLOR[info.staying.canal] || CANAL_COLOR['Otro'];
-        html += `<div class="cal-day occ" style="border-left:3px solid ${color};"><div class="num">${d}</div><div class="guest">${info.staying.pasajero}</div><div class="guest" style="color:${color};font-weight:600;">${info.staying.canal}</div></div>`;
+        html += `<div class="cal-day occ"><div class="num">${d}</div><div class="guest">${info.staying.pasajero}</div><div class="guest" style="color:#5b8a7a;">${info.staying.canal}</div></div>`;
       } else if (info.arriving || info.departing) {
-        let top = '<div class="cal-half"></div>', bottom = '<div class="cal-half"></div>';
-        if (info.departing) {
-          const c = CANAL_COLOR[info.departing.canal] || CANAL_COLOR['Otro'];
-          top = `<div class="cal-half" style="background:${c}22; border-left:3px solid ${c};"><span class="guest" style="color:${c};">${info.departing.pasajero} (sale)</span></div>`;
-        }
+        let arriveTri = '', departTri = '', arriveLbl = '', departLbl = '';
         if (info.arriving) {
-          const c = CANAL_COLOR[info.arriving.canal] || CANAL_COLOR['Otro'];
-          bottom = `<div class="cal-half" style="background:${c}22; border-left:3px solid ${c};"><span class="guest" style="color:${c};">${info.arriving.pasajero} (llega)</span></div>`;
+          arriveTri = '<div class="tri-arrive"></div>';
+          arriveLbl = `<div class="lbl-arrive">${info.arriving.pasajero}<br>llega</div>`;
         }
-        html += `<div class="cal-day split"><div class="num">${d}</div>${top}${bottom}</div>`;
+        if (info.departing) {
+          departTri = '<div class="tri-depart"></div>';
+          departLbl = `<div class="lbl-depart">${info.departing.pasajero}<br>sale</div>`;
+        }
+        html += `<div class="cal-day split">${arriveTri}${departTri}<div class="num">${d}</div>${arriveLbl}${departLbl}</div>`;
       } else {
         html += `<div class="cal-day"><div class="num">${d}</div></div>`;
       }
     }
-    html += '</div><div class="cal-legend" style="flex-wrap:wrap;">';
-    Object.keys(CANAL_COLOR).forEach(canal => {
-      html += `<span class="sw" style="background:${CANAL_COLOR[canal]}; border-color:${CANAL_COLOR[canal]};"></span> ${canal} &nbsp;`;
-    });
+    html += '</div><div class="cal-legend">';
+    html += '<span class="sw"></span> Ocupado &nbsp; <span style="font-style:italic;">Día partido en diagonal: arriba llega, abajo sale</span>';
     html += '</div>';
     cont.innerHTML = html;
   } catch (e) {
