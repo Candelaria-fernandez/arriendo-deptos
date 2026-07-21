@@ -39,11 +39,14 @@
   .spinner { text-align:center; padding: 2rem; color:#666; }
   .cal-grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:4px; }
   .cal-head { font-size:11px; color:#666; text-align:center; padding:2px 0; }
-  .cal-day { min-height:56px; border-radius:6px; padding:4px; font-size:11px; background:#f7f7f5; border:1px solid #e1e0d9; }
+  .cal-day { min-height:64px; border-radius:6px; padding:4px; font-size:11px; background:#f7f7f5; border:1px solid #e1e0d9; }
   .cal-day.empty { background:none; border:none; }
   .cal-day .num { font-weight:600; font-size:12px; }
   .cal-day.occ { background:#E1F5EE; border-color:#9FE1CB; }
   .cal-day .guest { font-size:10px; color:#085041; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cal-day.split { display:flex; flex-direction:column; gap:2px; padding:3px; }
+  .cal-half { flex:1; border-radius:3px; padding:1px 3px; min-height:16px; }
+  .cal-half .guest { font-size:9px; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
   .cal-legend { font-size:12px; color:#666; margin-top:8px; display:flex; align-items:center; gap:6px; }
   .cal-legend .sw { width:12px; height:12px; border-radius:3px; background:#E1F5EE; border:1px solid #9FE1CB; display:inline-block; }
 </style>
@@ -547,8 +550,11 @@ async function verCalendario() {
     const dayInfo = {};
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = anio + '-' + String(mes).padStart(2,'0') + '-' + String(d).padStart(2,'0');
-      const match = estadias.find(e => dateStr >= e.checkin && dateStr < e.checkout);
-      dayInfo[d] = match || null;
+      dayInfo[d] = {
+        staying: estadias.find(e => dateStr > e.checkin && dateStr < e.checkout) || null,
+        arriving: estadias.find(e => dateStr === e.checkin) || null,
+        departing: estadias.find(e => dateStr === e.checkout) || null,
+      };
     }
     const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
     let html = `<p style="font-weight:600;">${monthNames[mes-1]} ${anio} — Depto ${depto}</p><div class="cal-grid">`;
@@ -556,9 +562,20 @@ async function verCalendario() {
     for (let i = 0; i < firstWeekday; i++) html += '<div class="cal-day empty"></div>';
     for (let d = 1; d <= daysInMonth; d++) {
       const info = dayInfo[d];
-      if (info) {
-        const color = CANAL_COLOR[info.canal] || CANAL_COLOR['Otro'];
-        html += `<div class="cal-day occ" style="border-left:3px solid ${color};"><div class="num">${d}</div><div class="guest">${info.pasajero}</div><div class="guest" style="color:${color};font-weight:600;">${info.canal}</div></div>`;
+      if (info.staying) {
+        const color = CANAL_COLOR[info.staying.canal] || CANAL_COLOR['Otro'];
+        html += `<div class="cal-day occ" style="border-left:3px solid ${color};"><div class="num">${d}</div><div class="guest">${info.staying.pasajero}</div><div class="guest" style="color:${color};font-weight:600;">${info.staying.canal}</div></div>`;
+      } else if (info.arriving || info.departing) {
+        let top = '<div class="cal-half"></div>', bottom = '<div class="cal-half"></div>';
+        if (info.departing) {
+          const c = CANAL_COLOR[info.departing.canal] || CANAL_COLOR['Otro'];
+          top = `<div class="cal-half" style="background:${c}22; border-left:3px solid ${c};"><span class="guest" style="color:${c};">${info.departing.pasajero} (sale)</span></div>`;
+        }
+        if (info.arriving) {
+          const c = CANAL_COLOR[info.arriving.canal] || CANAL_COLOR['Otro'];
+          bottom = `<div class="cal-half" style="background:${c}22; border-left:3px solid ${c};"><span class="guest" style="color:${c};">${info.arriving.pasajero} (llega)</span></div>`;
+        }
+        html += `<div class="cal-day split"><div class="num">${d}</div>${top}${bottom}</div>`;
       } else {
         html += `<div class="cal-day"><div class="num">${d}</div></div>`;
       }
