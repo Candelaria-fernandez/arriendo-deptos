@@ -192,7 +192,7 @@
     <button id="btn-cargar-movs">Cargar últimos movimientos</button>
     <div class="card" style="overflow-x:auto; margin-top:1rem;">
       <table>
-        <thead><tr><th>Fecha</th><th>Depto</th><th>Tipo</th><th>Categoría</th><th>Monto</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Depto</th><th>Tipo</th><th>Categoría</th><th>Monto</th><th></th></tr></thead>
         <tbody id="tbl-movs"></tbody>
       </table>
     </div>
@@ -353,7 +353,7 @@ document.getElementById('btn-guardar').addEventListener('click', async () => {
     await graphFetch(fileBase() + '/application/calculate', {
       method: 'POST', body: JSON.stringify({ calculationType: 'Full' })
     });
-    msg.className = 'msg ok'; msg.textContent = 'Movimiento guardado en el Excel.';
+    msg.className = 'msg ok'; msg.textContent = 'Guardado. Puede tardar unos segundos en verse reflejado en Excel o en Movimientos.';
     document.getElementById('f-monto').value = '';
     document.getElementById('f-desc').value = '';
   } catch (e) {
@@ -374,6 +374,7 @@ async function cargarResumen() {
     await graphFetch(fileBase() + '/application/calculate', {
       method: 'POST', body: JSON.stringify({ calculationType: 'Full' })
     });
+    await new Promise(r => setTimeout(r, 1000));
     const kpi = await graphFetch(fileBase() + "/worksheets('Dashboard')/range(address='B7:B10')");
     const [ing, cos, res, mar] = kpi.values.map(r => r[0]);
     document.getElementById('m-ing').textContent = fmt(ing);
@@ -404,23 +405,45 @@ document.getElementById('btn-refrescar').addEventListener('click', cargarResumen
 
 document.getElementById('btn-cargar-movs').addEventListener('click', async () => {
   const tbody = document.getElementById('tbl-movs');
-  tbody.innerHTML = '<tr><td colspan="5">Cargando…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="6">Cargando…</td></tr>';
+  await new Promise(r => setTimeout(r, 1200));
   try {
     const data = await graphFetch(fileBase() + "/tables('MovimientosRentaCorta')/rows?$top=2000");
-    const rows = data.value.map(r => r.values[0]).filter(r => r[1]);
-    rows.sort((a,b) => String(b[1]).localeCompare(String(a[1])));
+    const rows = data.value
+      .map(row => ({ index: row.index, values: row.values[0] }))
+      .filter(row => row.values[1]);
+    rows.sort((a,b) => String(b.values[1]).localeCompare(String(a.values[1])));
     tbody.innerHTML = '';
-    rows.slice(0,80).forEach(r => {
+    rows.slice(0,80).forEach(row => {
+      const r = row.values;
       const tipo = r[5], monto = tipo === 'Ingreso' ? r[10] : r[11];
       const pillClass = tipo === 'Ingreso' ? 'ing' : 'cos';
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${String(r[1]).slice(0,10)}</td><td>${r[4]}</td><td><span class="pill ${pillClass}">${tipo}</span></td><td>${r[6]}</td><td>${fmt(monto)}</td>`;
+      tr.innerHTML = `<td>${String(r[1]).slice(0,10)}</td><td>${r[4]}</td><td><span class="pill ${pillClass}">${tipo}</span></td><td>${r[6]}</td><td>${fmt(monto)}</td><td><button class="btn-del-mov" data-index="${row.index}" style="width:auto;height:32px;padding:0 10px;margin:0;color:#993c1d;">Borrar</button></td>`;
       tbody.appendChild(tr);
     });
+    tbody.querySelectorAll('.btn-del-mov').forEach(btn => {
+      btn.addEventListener('click', () => borrarMovimiento(parseInt(btn.dataset.index,10)));
+    });
   } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="5">Error: ' + e.message + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6">Error: ' + e.message + '</td></tr>';
   }
 });
+
+async function borrarMovimiento(index) {
+  if (!confirm('¿Seguro que quieres borrar este movimiento? No se puede deshacer.')) return;
+  try {
+    await graphFetch(fileBase() + "/tables('MovimientosRentaCorta')/rows/itemAt(index=" + index + ")", {
+      method: 'DELETE'
+    });
+    await graphFetch(fileBase() + '/application/calculate', {
+      method: 'POST', body: JSON.stringify({ calculationType: 'Full' })
+    });
+    document.getElementById('btn-cargar-movs').click();
+  } catch (e) {
+    alert('No se pudo borrar: ' + e.message);
+  }
+}
 
 // ---------- Estadías / calendario ----------
 function excelSerialToDateStr(serial) {
