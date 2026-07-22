@@ -90,6 +90,7 @@
     <button class="tab" data-tab="estadias">Estadías</button>
     <button class="tab" data-tab="resumen">Resumen</button>
     <button class="tab" data-tab="movs">Movimientos</button>
+    <button class="tab" data-tab="ocupacion">Ocupación</button>
   </div>
 
   <div id="tab-registro" class="section active">
@@ -209,6 +210,69 @@
         <tbody id="tbl-movs"></tbody>
       </table>
     </div>
+  </div>
+
+  <div id="tab-ocupacion" class="section">
+    <h2 style="margin-top:0;">Estadísticas de ocupación</h2>
+    <div class="row2">
+      <div>
+        <label for="st-anio">Año</label>
+        <input type="number" id="st-anio" value="2026">
+      </div>
+      <div>
+        <label for="st-depto">Departamento</label>
+        <select id="st-depto">
+          <option value="Todos">Todos</option>
+          <option value="107">107</option>
+          <option value="305">305</option>
+          <option value="607">607</option>
+        </select>
+      </div>
+    </div>
+    <button id="btn-calc-stats">Calcular estadísticas</button>
+    <div class="grid" style="margin-top:1rem;">
+      <div class="metric"><div class="label">Tasa de ocupación (año)</div><div class="value" id="st-ocupacion">-</div></div>
+      <div class="metric"><div class="label">Estadía promedio</div><div class="value" id="st-estadia">-</div></div>
+      <div class="metric"><div class="label">Tarifa promedio / noche</div><div class="value" id="st-adr">-</div></div>
+      <div class="metric"><div class="label">Total reservas</div><div class="value" id="st-total">-</div></div>
+    </div>
+    <h2>Reservas por plataforma</h2>
+    <div style="position:relative; height:200px;">
+      <canvas id="chartCanal"></canvas>
+    </div>
+    <h2>Ocupación por mes</h2>
+    <div style="position:relative; height:220px;">
+      <canvas id="chartOcupMes"></canvas>
+    </div>
+    <div id="msg-stats" class="msg"></div>
+
+    <h2>Calendario automático (Airbnb / Booking)</h2>
+    <p style="font-size:13px; color:#666;">Muestra los días bloqueados directo desde Airbnb y Booking (sin nombre ni monto, eso lo sigue registrando tu mamá en "Estadías").</p>
+    <div class="card">
+      <p style="font-size:14px; font-weight:600; margin:0 0 8px;">Configuración (una sola vez por dispositivo)</p>
+      <label for="ical-proxy">Link del puente (Google Apps Script)</label>
+      <input type="text" id="ical-proxy" placeholder="https://script.google.com/macros/s/.../exec">
+      <label for="ical-depto">Departamento</label>
+      <select id="ical-depto"><option value="107">107</option><option value="305">305</option><option value="607">607</option></select>
+      <label for="ical-airbnb">Link iCal de Airbnb (para este depto)</label>
+      <input type="text" id="ical-airbnb" placeholder="https://www.airbnb.com/calendar/ical/....ics">
+      <label for="ical-booking">Link iCal de Booking (para este depto)</label>
+      <input type="text" id="ical-booking" placeholder="https://admin.booking.com/.../calendar.ics">
+      <button id="btn-guardar-ical">Guardar links de este depto</button>
+      <div id="msg-ical" class="msg"></div>
+    </div>
+    <div class="row2">
+      <div>
+        <label for="ical-ver-depto">Departamento</label>
+        <select id="ical-ver-depto"><option value="107">107</option><option value="305">305</option><option value="607">607</option></select>
+      </div>
+      <div>
+        <label for="ical-ver-mes">Mes</label>
+        <input type="month" id="ical-ver-mes">
+      </div>
+    </div>
+    <button id="btn-ver-ical">Ver calendario automático</button>
+    <div id="calendario-ical" style="margin-top:1rem;"></div>
   </div>
 </div>
 
@@ -597,6 +661,174 @@ async function verCalendario() {
 }
 document.getElementById('btn-ver-calendario').addEventListener('click', verCalendario);
 document.getElementById('cal-mes').value = new Date().toISOString().slice(0,7);
+
+// ---------- Estadísticas de ocupación ----------
+let chartCanal, chartOcupMes;
+
+document.getElementById('btn-calc-stats').addEventListener('click', async () => {
+  const msg = document.getElementById('msg-stats');
+  const anio = document.getElementById('st-anio').value;
+  const depto = document.getElementById('st-depto').value;
+  msg.className = 'msg'; msg.textContent = 'Calculando...';
+  try {
+    const allRows = await graphFetchAllRows(fileBase() + "/tables('ReservasRentaCorta')/rows?$top=200");
+    let stays = allRows
+      .map(r => r.values[0])
+      .filter(r => depto === 'Todos' || String(r[1]) === depto)
+      .filter(r => r[10] !== 'Cancelada')
+      .map(r => ({
+        depto: String(r[1]),
+        canal: r[2] || 'Otro',
+        checkin: excelSerialToDateStr(r[3]),
+        checkout: excelSerialToDateStr(r[4]),
+        ingreso: r[7],
+      }))
+      .filter(e => e.checkin && e.checkout && e.checkin.slice(0,4) === String(anio));
+
+    // Noches por depto (para dividir tasa de ocupación)
+    const deptosConsiderados = depto === 'Todos' ? ['107','305','607'] : [depto];
+    const isLeap = (anio % 4 === 0 && anio % 100 !== 0) || anio % 400 === 0;
+    const diasEnAnio = isLeap ? 366 : 365;
+    const diasTotales = diasEnAnio * deptosConsiderados.length;
+
+    let nochesTotales = 0;
+    let sumaNoches = 0;
+    let sumaIngresoConocido = 0;
+    let nochesConIngreso = 0;
+    const porCanal = {};
+    const nochesPorMes = Array(12).fill(0);
+
+    stays.forEach(s => {
+      const noches = Math.round((new Date(s.checkout) - new Date(s.checkin)) / 86400000);
+      nochesTotales += noches;
+      sumaNoches += noches;
+      if (s.ingreso) { sumaIngresoConocido += s.ingreso; nochesConIngreso += noches; }
+      porCanal[s.canal] = (porCanal[s.canal] || 0) + 1;
+      // distribuir noches en los meses que toca (simplificado: se cuenta en el mes del check-in)
+      const mesIdx = parseInt(s.checkin.slice(5,7),10) - 1;
+      nochesPorMes[mesIdx] += noches;
+    });
+
+    const tasaOcupacion = diasTotales > 0 ? (nochesTotales / diasTotales * 100) : 0;
+    const estadiaProm = stays.length > 0 ? (sumaNoches / stays.length) : 0;
+    const adr = nochesConIngreso > 0 ? (sumaIngresoConocido / nochesConIngreso) : 0;
+
+    document.getElementById('st-ocupacion').textContent = Math.round(tasaOcupacion) + '%';
+    document.getElementById('st-estadia').textContent = estadiaProm.toFixed(1) + ' noches';
+    document.getElementById('st-adr').textContent = fmt(adr);
+    document.getElementById('st-total').textContent = stays.length;
+
+    if (chartCanal) chartCanal.destroy();
+    chartCanal = new Chart(document.getElementById('chartCanal'), {
+      type: 'bar',
+      data: { labels: Object.keys(porCanal), datasets: [{ data: Object.values(porCanal), backgroundColor: ['#D4537E','#2a78d6','#1baf7a','#888780'], borderRadius:4 }] },
+      options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }
+    });
+
+    const monthNames = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    if (chartOcupMes) chartOcupMes.destroy();
+    chartOcupMes = new Chart(document.getElementById('chartOcupMes'), {
+      type: 'bar',
+      data: { labels: monthNames, datasets: [{ label: 'Noches ocupadas', data: nochesPorMes, backgroundColor:'#1baf7a', borderRadius:4 }] },
+      options: { responsive:true, maintainAspectRatio:false, scales:{y:{beginAtZero:true}} }
+    });
+    msg.textContent = '';
+  } catch (e) {
+    msg.className = 'msg err'; msg.textContent = 'Error: ' + e.message;
+  }
+});
+
+// ---------- Calendario automático (iCal Airbnb/Booking vía Apps Script) ----------
+const ICAL_KEY = 'ical_config_lastarria';
+function loadIcalConfig() {
+  const raw = localStorage.getItem(ICAL_KEY);
+  return raw ? JSON.parse(raw) : { proxy: '', deptos: {} };
+}
+function saveIcalConfig(cfg) { localStorage.setItem(ICAL_KEY, JSON.stringify(cfg)); }
+
+(function initIcalForm() {
+  const cfg = loadIcalConfig();
+  document.getElementById('ical-proxy').value = cfg.proxy || '';
+  document.getElementById('ical-depto').addEventListener('change', fillIcalFields);
+  fillIcalFields();
+  function fillIcalFields() {
+    const d = document.getElementById('ical-depto').value;
+    const dc = cfg.deptos[d] || {};
+    document.getElementById('ical-airbnb').value = dc.airbnb || '';
+    document.getElementById('ical-booking').value = dc.booking || '';
+  }
+})();
+
+document.getElementById('btn-guardar-ical').addEventListener('click', () => {
+  const cfg = loadIcalConfig();
+  cfg.proxy = document.getElementById('ical-proxy').value.trim();
+  const d = document.getElementById('ical-depto').value;
+  cfg.deptos[d] = {
+    airbnb: document.getElementById('ical-airbnb').value.trim(),
+    booking: document.getElementById('ical-booking').value.trim(),
+  };
+  saveIcalConfig(cfg);
+  const msg = document.getElementById('msg-ical');
+  msg.className = 'msg ok'; msg.textContent = 'Guardado para depto ' + d + '.';
+});
+
+function parseIcal(text, canalNombre) {
+  const events = [];
+  const blocks = text.split('BEGIN:VEVENT').slice(1);
+  blocks.forEach(b => {
+    const dtstart = b.match(/DTSTART[^:]*:(\d{8})/);
+    const dtend = b.match(/DTEND[^:]*:(\d{8})/);
+    if (dtstart && dtend) {
+      const fmt = s => s.slice(0,4) + '-' + s.slice(4,6) + '-' + s.slice(6,8);
+      events.push({ checkin: fmt(dtstart[1]), checkout: fmt(dtend[1]), canal: canalNombre });
+    }
+  });
+  return events;
+}
+
+document.getElementById('btn-ver-ical').addEventListener('click', async () => {
+  const cont = document.getElementById('calendario-ical');
+  const cfg = loadIcalConfig();
+  const depto = document.getElementById('ical-ver-depto').value;
+  const mesVal = document.getElementById('ical-ver-mes').value;
+  if (!cfg.proxy) { alert('Primero guarda el link del puente (Google Apps Script).'); return; }
+  const dc = cfg.deptos[depto] || {};
+  if (!dc.airbnb && !dc.booking) { alert('Primero guarda los links iCal de este depto.'); return; }
+  if (!mesVal) { alert('Elige un mes.'); return; }
+  cont.innerHTML = '<p style="color:#666; font-size:13px;">Cargando…</p>';
+  const [anio, mes] = mesVal.split('-').map(x => parseInt(x,10));
+  try {
+    let events = [];
+    for (const [canalNombre, url] of [['Airbnb', dc.airbnb], ['Booking', dc.booking]]) {
+      if (!url) continue;
+      const res = await fetch(cfg.proxy + '?url=' + encodeURIComponent(url));
+      const text = await res.text();
+      events = events.concat(parseIcal(text, canalNombre));
+    }
+    const daysInMonth = new Date(anio, mes, 0).getDate();
+    const firstWeekday = (new Date(anio, mes-1, 1).getDay() + 6) % 7;
+    const CANAL_COLOR = { 'Airbnb': '#D4537E', 'Booking': '#2a78d6' };
+    let html = `<div class="cal-grid">`;
+    ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].forEach(d => { html += `<div class="cal-head">${d}</div>`; });
+    for (let i = 0; i < firstWeekday; i++) html += '<div class="cal-day empty"></div>';
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = anio + '-' + String(mes).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+      const match = events.find(e => dateStr >= e.checkin && dateStr < e.checkout);
+      if (match) {
+        const c = CANAL_COLOR[match.canal] || '#888780';
+        html += `<div class="cal-day occ" style="border-left:4px solid ${c};"><div class="num">${d}</div><div class="guest" style="color:${c};">${match.canal}</div></div>`;
+      } else {
+        html += `<div class="cal-day"><div class="num">${d}</div></div>`;
+      }
+    }
+    html += '</div>';
+    cont.innerHTML = html;
+  } catch (e) {
+    cont.innerHTML = '<p class="msg err">Error al cargar: ' + e.message + '</p>';
+  }
+});
+document.getElementById('ical-ver-mes').value = new Date().toISOString().slice(0,7);
+
 
 
 init();
